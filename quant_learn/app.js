@@ -124,6 +124,7 @@
 
   /* ============ ROUTER ============ */
   const tabs = $$('#tabs a'), views = $$('.view'), ink = $('#ink');
+  const tabOrder = tabs.map(tab => tab.dataset.tab);
   function moveInk(a) {
     if (!a || innerWidth <= 760) return;
     ink.style.left = a.offsetLeft + 'px'; ink.style.width = a.offsetWidth + 'px';
@@ -132,6 +133,8 @@
     if (!document.getElementById(id)) id = 'home';
     views.forEach(v => v.classList.toggle('active', v.id === id));
     tabs.forEach(a => { const on = a.dataset.tab === id; a.classList.toggle('active', on); on && moveInk(a); });
+    const next = tabOrder[(tabOrder.indexOf(id) + 1) % tabOrder.length];
+    $('#nextTabLabel').textContent = `Next: ${next.charAt(0).toUpperCase() + next.slice(1)}`;
     $('#tabs').classList.remove('open');
     scrollTo({ top: 0, behavior: 'smooth' });
     if (id === 'concepts') loadConcepts();
@@ -142,6 +145,11 @@
   addEventListener('hashchange', () => show(location.hash.slice(1)));
   addEventListener('resize', () => moveInk($('#tabs a.active')));
   $('#menuBtn').onclick = () => $('#tabs').classList.toggle('open');
+  $('#nextTab').onclick = () => {
+    const current = location.hash.slice(1) || 'home';
+    const next = tabOrder[(tabOrder.indexOf(current) + 1) % tabOrder.length];
+    location.hash = next;
+  };
   document.fonts?.ready.then(() => moveInk($('#tabs a.active')));
 
   /* ============ HOME ============ */
@@ -328,7 +336,8 @@
       for (let k = 0; k < steps; k++) { s *= Math.exp((mu - .5 * sg * sg) * dt + sg * Math.sqrt(dt) * gauss()); p.push(s); }
       paths.push(p); finals.push(s);
     }
-    const [c, w, h] = fit($('#mcCanvas')), pad = 34;
+    const mcCanvas = $('#mcCanvas');
+    const [c, w, h] = fit(mcCanvas), pad = 34;
     const all = paths.flat(), lo = Math.min(...all), hi = Math.max(...all);
     const X = i => pad + (w - pad - 10) * i / steps, Y = v => h - pad / 1.4 - (h - pad * 1.4) * (v - lo) / (hi - lo || 1);
     c.clearRect(0, 0, w, h);
@@ -346,6 +355,7 @@
     const up = finals.filter(v => v > S0).length / N;
     $('#mcStats').innerHTML = [['Mean S(T)', m.toFixed(2)], ['5th pct', q(.05).toFixed(2)], ['95th pct', q(.95).toFixed(2)], ['P(S_T > S₀)', (up * 100).toFixed(0) + '%']]
       .map(([a, b]) => `<div class="kpi"><span>${a}</span><b>${b}</b></div>`).join('');
+    mcCanvas._chartData = { type: 'mc', steps, mean, lo, hi, pad, height: h };
   }
   $('#mcRun').onclick = runMC;
 
@@ -369,7 +379,8 @@
     ];
     $('#bsOut').innerHTML = out.map(([a, b, cl]) => `<div class="kpi"><span>${a}</span><b class="${cl || ''}">${b}</b></div>`).join('');
     // payoff chart: price now vs expiry
-    const [c, w, h] = fit($('#payCanvas')), lo = S * .6, hi = S * 1.4, pad = 28;
+    const payCanvas = $('#payCanvas');
+    const [c, w, h] = fit(payCanvas), lo = S * .6, hi = S * 1.4, pad = 28;
     const bs = s => { const a = (Math.log(s / K) + (r + v * v / 2) * T) / (v * Math.sqrt(T)); return s * N(a) - K * Math.exp(-r * T) * N(a - v * Math.sqrt(T)); };
     const maxY = Math.max(hi - K, bs(hi)) * 1.05 || 1;
     const X = s => pad + (w - pad - 8) * (s - lo) / (hi - lo), Y = y => h - 20 - (h - 34) * y / maxY;
@@ -380,8 +391,123 @@
     line(s => Math.max(s - K, 0), '#a5b4fc', 1.5); line(bs, '#5eead4', 2.2);
     c.fillStyle = '#5eead4'; c.beginPath(); c.arc(X(S), Y(call), 4, 0, 7); c.fill();
     c.fillStyle = '#6f7a8c'; c.fillText('— BS value', w - 150, 12); c.fillStyle = '#a5b4fc'; c.fillText('— payoff at expiry', w - 100 > 0 ? w - 96 : 0, 24);
+    payCanvas._chartData = { type: 'bs', lo, hi, bs, maxY, pad, height: h };
   }
   $('#bsForm').addEventListener('input', runBS);
+
+  function bindChartHover(canvas) {
+    const wrap = canvas.parentElement, line = $('.chart-crosshair', wrap), tip = $('.chart-tooltip', wrap);
+    canvas.addEventListener('pointermove', e => {
+      const data = canvas._chartData;
+      if (!data) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      const ratio = x / rect.width;
+      line.style.left = `${x}px`; line.style.opacity = '1'; tip.style.opacity = '1';
+      if (data.type === 'mc') {
+        const index = Math.min(data.steps, Math.round(ratio * data.steps));
+        tip.textContent = `t ${(index / data.steps).toFixed(2)}y · mean ${data.mean[index].toFixed(2)}`;
+      } else {
+        const spot = data.lo + (data.hi - data.lo) * ratio;
+        tip.textContent = `spot ${spot.toFixed(2)} · call ${data.bs(spot).toFixed(3)}`;
+      }
+      const tipWidth = tip.offsetWidth;
+      tip.style.left = `${Math.max(8, Math.min(rect.width - tipWidth - 8, x + 12))}px`;
+    });
+    canvas.addEventListener('pointerleave', () => { line.style.opacity = '0'; tip.style.opacity = '0'; });
+  }
+  bindChartHover($('#mcCanvas')); bindChartHover($('#payCanvas'));
+
+  function openGraph(id) {
+    const source = $(`#${id}`);
+    const preview = $('#graphPreview');
+    const title = id === 'mcCanvas' ? 'Monte Carlo paths' : 'Black–Scholes value curve';
+    if (!source || !preview) return;
+    if (id === 'mcCanvas') runMC();
+    if (id === 'payCanvas') runBS();
+    graphState.source = source;
+    graphState.type = source._chartData?.type || 'bs';
+    graphState.zoom = 1;
+    graphState.x = 0;
+    graphState.y = 0;
+    $('#graphModalTitle').textContent = title;
+    $('#graphCoordinates').textContent = 'Move over the chart to inspect coordinates';
+    $('#graphModal').hidden = false;
+    document.body.classList.add('modal-open');
+    requestAnimationFrame(drawGraphViewport);
+  }
+  function closeGraph() {
+    $('#graphModal').hidden = true;
+    document.body.classList.remove('modal-open');
+  }
+  const graphState = { source: null, type: '', zoom: 1, x: 0, y: 0, dragging: false, lastX: 0, lastY: 0 };
+  function drawGraphViewport() {
+    const viewport = $('#graphViewport'), canvas = $('#graphPreview'), source = graphState.source;
+    if (!viewport || !canvas || !source) return;
+    const rect = viewport.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#080d14'; ctx.fillRect(0, 0, rect.width, rect.height);
+    const sourceWidth = source.width / Math.min(devicePixelRatio || 1, 2);
+    const sourceHeight = source.height / Math.min(devicePixelRatio || 1, 2);
+    const scale = Math.min(rect.width / sourceWidth, rect.height / sourceHeight) * graphState.zoom;
+    const width = sourceWidth * scale, height = sourceHeight * scale;
+    const x = (rect.width - width) / 2 + graphState.x, y = (rect.height - height) / 2 + graphState.y;
+    ctx.drawImage(source, 0, 0, source.width, source.height, x, y, width, height);
+    $('#zoomLevel').textContent = `${Math.round(graphState.zoom * 100)}%`;
+  }
+  function graphPoint(e) {
+    const viewport = $('#graphViewport'), source = graphState.source, data = source && source._chartData;
+    if (!viewport || !source || !data) return;
+    const rect = viewport.getBoundingClientRect();
+    const sourceWidth = source.width / Math.min(devicePixelRatio || 1, 2);
+    const sourceHeight = source.height / Math.min(devicePixelRatio || 1, 2);
+    const scale = Math.min(rect.width / sourceWidth, rect.height / sourceHeight) * graphState.zoom;
+    const width = sourceWidth * scale, height = sourceHeight * scale;
+    const originX = (rect.width - width) / 2 + graphState.x, originY = (rect.height - height) / 2 + graphState.y;
+    const sourceX = (e.clientX - rect.left - originX) / scale;
+    const sourceY = (e.clientY - rect.top - originY) / scale;
+    if (sourceX < 0 || sourceX > sourceWidth || sourceY < 0 || sourceY > sourceHeight) return;
+    if (data.type === 'bs') {
+      const spot = data.lo + (data.hi - data.lo) * Math.max(0, Math.min(1, sourceX / sourceWidth));
+      const value = Math.max(0, (data.height - 20 - sourceY) * data.maxY / (data.height - 34));
+      $('#graphCoordinates').textContent = `x spot ${spot.toFixed(2)} · y ${value.toFixed(3)} · call ${data.bs(spot).toFixed(3)} · zoom ${Math.round(graphState.zoom * 100)}%`;
+    } else {
+      const index = Math.max(0, Math.min(data.steps, Math.round(sourceX / sourceWidth * data.steps)));
+      const value = data.lo + (data.height - data.pad / 1.4 - sourceY) * (data.hi - data.lo) / (data.height - data.pad * 1.4);
+      $('#graphCoordinates').textContent = `x time ${(index / data.steps).toFixed(2)}y · y ${value.toFixed(2)} · mean ${data.mean[index].toFixed(2)} · zoom ${Math.round(graphState.zoom * 100)}%`;
+    }
+  }
+  $('#zoomIn').onclick = () => { graphState.zoom = Math.min(5, graphState.zoom * 1.25); drawGraphViewport(); };
+  $('#zoomOut').onclick = () => { graphState.zoom = Math.max(.5, graphState.zoom / 1.25); drawGraphViewport(); };
+  $('#zoomReset').onclick = () => { graphState.zoom = 1; graphState.x = 0; graphState.y = 0; drawGraphViewport(); };
+  $('#graphViewport').addEventListener('wheel', e => { e.preventDefault(); graphState.zoom = Math.max(.5, Math.min(5, graphState.zoom * (e.deltaY < 0 ? 1.12 : .89))); drawGraphViewport(); graphPoint(e); }, { passive: false });
+  $('#graphViewport').addEventListener('pointerdown', e => { graphState.dragging = true; graphState.lastX = e.clientX; graphState.lastY = e.clientY; $('#graphViewport').classList.add('dragging'); $('#graphViewport').setPointerCapture(e.pointerId); });
+  $('#graphViewport').addEventListener('pointermove', e => {
+    if (graphState.dragging) { graphState.x += e.clientX - graphState.lastX; graphState.y += e.clientY - graphState.lastY; graphState.lastX = e.clientX; graphState.lastY = e.clientY; drawGraphViewport(); }
+    graphPoint(e);
+  });
+  $('#graphViewport').addEventListener('pointerup', e => { graphState.dragging = false; $('#graphViewport').classList.remove('dragging'); $('#graphViewport').releasePointerCapture(e.pointerId); });
+  addEventListener('resize', () => !$('#graphModal').hidden && drawGraphViewport());
+  $$('.expand-btn').forEach(button => button.addEventListener('click', () => openGraph(button.dataset.graph)));
+  $('#graphClose').addEventListener('click', closeGraph);
+  $('#graphModal').addEventListener('click', e => { if (e.target.id === 'graphModal') closeGraph(); });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#graphModal').hidden) closeGraph(); });
+
+  $$('.help-btn').forEach(button => button.addEventListener('click', e => {
+    e.stopPropagation();
+    const current = button.parentElement.querySelector('.help-note');
+    $$('.help-note').forEach(note => note.remove());
+    if (!current) {
+      const note = document.createElement('div');
+      note.className = 'help-note';
+      note.textContent = button.dataset.help;
+      button.parentElement.append(note);
+    }
+  }));
+  addEventListener('click', () => $$('.help-note').forEach(note => note.remove()));
 
   function runPositionSize() {
     const value = k => +$(`#positionForm [name=${k}]`).value || 0;

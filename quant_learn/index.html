@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2314212c'/%3E%3Cpath d='M13 44l13-16 10 8 15-18' fill='none' stroke='%235eead4' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M40 18h11v11' fill='none' stroke='%235eead4' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -48,9 +49,10 @@
       <div><b data-count="30">0</b><span>Curated links</span></div>
       <div><b data-count="4">0</b><span>Interactive tools</span></div>
     </div>
+    <a class="scroll-cue" href="#start-here" aria-label="Scroll to the next section"><span>Explore the path</span><span class="scroll-arrow">↓</span></a>
   </div>
 
-  <section class="start-panel">
+  <section class="start-panel" id="start-here">
     <div class="start-copy">
       <span class="eyebrow">A sensible first week</span>
       <h2>Not sure where to begin?</h2>
@@ -113,7 +115,7 @@
   </div>
   <div class="grid cols-2 tools">
     <article class="card panel">
-      <h3>Monte Carlo · Geometric Brownian Motion</h3>
+      <div class="tool-title"><h3>Monte Carlo · Geometric Brownian Motion</h3><button class="help-btn" type="button" aria-label="Explain Monte Carlo tool" data-help="Simulates many possible price paths using geometric Brownian motion. Change drift, volatility, time, and path count to see how uncertainty changes.">?</button></div>
       <p class="muted small">dS = μS dt + σS dW — simulate possible price paths.</p>
       <div class="form" id="mcForm">
         <label>Spot S₀<input type="number" name="s0" value="100" step="1"></label>
@@ -123,12 +125,12 @@
         <label>Paths<input type="number" name="n" value="80" step="10" min="10" max="400"></label>
         <button class="btn primary" id="mcRun" type="button">Simulate</button>
       </div>
-      <canvas id="mcCanvas" height="300"></canvas>
+      <div class="chart-wrap"><canvas id="mcCanvas" height="300"></canvas><span class="chart-crosshair"></span><span class="chart-tooltip"></span><button class="expand-btn" type="button" data-graph="mcCanvas" aria-label="Open Monte Carlo graph fullscreen">↗</button></div>
       <div class="kpis" id="mcStats"></div>
     </article>
 
     <article class="card panel">
-      <h3>Black–Scholes Calculator</h3>
+      <div class="tool-title"><h3>Black–Scholes Calculator</h3><button class="help-btn" type="button" aria-label="Explain Black-Scholes tool" data-help="Prices a European call and put, then shows the main Greeks. Try changing spot, strike, time, rate, or volatility and watch the outputs update.">?</button></div>
       <p class="muted small">European option price and Greeks.</p>
       <div class="form" id="bsForm">
         <label>Spot S<input type="number" name="S" value="100"></label>
@@ -138,11 +140,11 @@
         <label>Vol σ (%)<input type="number" name="v" value="20" step="0.5"></label>
       </div>
       <div class="kpis big" id="bsOut"></div>
-      <canvas id="payCanvas" height="200"></canvas>
+      <div class="chart-wrap"><canvas id="payCanvas" height="200"></canvas><span class="chart-crosshair"></span><span class="chart-tooltip"></span><button class="expand-btn" type="button" data-graph="payCanvas" aria-label="Open Black-Scholes graph fullscreen">↗</button></div>
     </article>
 
     <article class="card panel">
-      <h3>Position Size Calculator</h3>
+      <div class="tool-title"><h3>Position Size Calculator</h3><button class="help-btn" type="button" aria-label="Explain position size tool" data-help="Calculates how many units you can trade while keeping the amount at risk fixed if the stop is hit. It is a planning aid, not a trade recommendation.">?</button></div>
       <p class="muted small">Turn your risk limit into a sensible trade size.</p>
       <div class="form" id="positionForm">
         <label>Account value<input type="number" name="account" value="10000" min="0"></label>
@@ -154,7 +156,7 @@
     </article>
 
     <article class="card panel">
-      <h3>Compound Growth Planner</h3>
+      <div class="tool-title"><h3>Compound Growth Planner</h3><button class="help-btn" type="button" aria-label="Explain compound growth tool" data-help="Projects a balance with monthly contributions and a constant annual return. Real returns vary, so use this to understand assumptions rather than predict performance.">?</button></div>
       <p class="muted small">See how regular contributions change a long-term result.</p>
       <div class="form" id="growthForm">
         <label>Starting amount<input type="number" name="start" value="1000" min="0"></label>
@@ -166,6 +168,20 @@
     </article>
   </div>
 </section>
+
+<div class="graph-modal" id="graphModal" hidden role="dialog" aria-modal="true" aria-labelledby="graphModalTitle">
+  <div class="graph-dialog">
+    <div class="graph-dialog-head"><div><h2 id="graphModalTitle">Graph detail</h2><span class="graph-coordinates" id="graphCoordinates">Move over the chart to inspect coordinates</span></div><button class="modal-close" id="graphClose" type="button" aria-label="Close graph">×</button></div>
+    <div class="graph-toolbar">
+      <button type="button" id="zoomOut" aria-label="Zoom out">−</button>
+      <span id="zoomLevel">100%</span>
+      <button type="button" id="zoomIn" aria-label="Zoom in">+</button>
+      <button type="button" id="zoomReset">Reset view</button>
+      <span class="graph-hint">Scroll to zoom · drag to pan</span>
+    </div>
+    <div class="graph-viewport" id="graphViewport"><canvas id="graphPreview" aria-label="Expanded interactive graph"></canvas></div>
+  </div>
+</div>
 
 <!-- PROGRESS -->
 <section class="view" id="progress">
@@ -194,6 +210,7 @@
   <span>© <span id="yr"></span> QuantVerse · Educational content only — not financial advice.</span>
   <a href="#home" data-tab="home">Back to top ↑</a>
 </footer>
+<button class="next-tab" id="nextTab" type="button" aria-label="Go to next section"><span id="nextTabLabel">Next: Roadmap</span><span class="next-tab-arrow">↓</span></button>
 
 <script src="app.js"></script>
 </body>
